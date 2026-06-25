@@ -98,22 +98,23 @@ def test_get_cloudflared_path_in_gangway_bin():
     with (
         patch("shutil.which", return_value=None),
         patch("pathlib.Path.home", return_value=Path("/home/user")),
-        patch("os.path.exists", return_value=True) as mock_os_exists,
+        patch.object(Path, "exists", return_value=True) as mock_exists,
     ):
         path = get_cloudflared_path()
         assert "cloudflared" in path
-        mock_os_exists.assert_called()
+        mock_exists.assert_called()
 
 
 def test_get_cloudflared_path_download():
     # If not on PATH and not in ~/.gangway/bin, it should download it
-    # We must mock urllib.request.urlretrieve and os.chmod and os.makedirs and os.path.exists
+    # We must mock urllib.request.urlretrieve and os.chmod and os.makedirs and Path.exists and os.replace
     with (
         patch("shutil.which", return_value=None),
-        patch("os.path.exists", return_value=False),
+        patch.object(Path, "exists", return_value=False),
         patch("os.makedirs") as mock_makedirs,
         patch("urllib.request.urlretrieve") as mock_urlretrieve,
         patch("os.chmod") as mock_chmod,
+        patch("os.replace") as mock_replace,
         patch("platform.system", return_value="Linux"),
         patch("platform.machine", return_value="x86_64"),
         patch("pathlib.Path.home", return_value=Path("/home/user")),
@@ -135,6 +136,39 @@ def test_get_cloudflared_path_download():
         # Verify chmod 0o755 was called on Linux
         mock_chmod.assert_called_once()
         assert mock_chmod.call_args[0][1] == 0o755
+
+        # Verify replace was called
+        mock_replace.assert_called_once()
+        replace_args, _ = mock_replace.call_args
+        assert str(replace_args[0]).endswith("cloudflared.tmp")
+        assert str(replace_args[1]).endswith("cloudflared")
+
+
+def test_get_cloudflared_path_download_failure():
+    # If download fails, it should delete the temporary file if it exists
+    with (
+        patch("shutil.which", return_value=None),
+        patch("os.makedirs"),
+        patch("urllib.request.urlretrieve", side_effect=Exception("Download failed")),
+        patch("platform.system", return_value="Linux"),
+        patch("platform.machine", return_value="x86_64"),
+        patch("pathlib.Path.home", return_value=Path("/home/user")),
+        patch("os.remove") as mock_remove,
+        patch.object(Path, "exists", autospec=True) as mock_exists,
+    ):
+
+        def path_exists_side_effect(*args, **kwargs):
+            if args:
+                return str(args[0]).endswith(".tmp")
+            return False
+
+        mock_exists.side_effect = path_exists_side_effect
+
+        path = get_cloudflared_path()
+        assert path is None
+        mock_remove.assert_called_once()
+        args, _ = mock_remove.call_args
+        assert str(args[0]).endswith("cloudflared.tmp")
 
 
 def test_start_tunnel_background_success():
@@ -169,7 +203,7 @@ def test_start_tunnel_background_success():
 def test_start_tunnel_background_timeout():
     mock_process = MagicMock()
     mock_process.poll.return_value = None
-    mock_process.stderr.readline.return_value = b"some random output with no url"
+    mock_process.stderr.readline.side_effect = [b"some random output with no url", b""]
 
     # We patch time.sleep to avoid waiting during test
     with (

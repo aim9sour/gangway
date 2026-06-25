@@ -9,7 +9,6 @@ import atexit
 import threading
 import json
 from pathlib import Path
-from queue import Queue
 from typing import Optional
 
 _tunnel_process: Optional[subprocess.Popen] = None
@@ -63,18 +62,25 @@ def get_cloudflared_path() -> Optional[str]:
     os.makedirs(bin_dir, exist_ok=True)
     print(f"Downloading cloudflared from {url} to {local_path}...")
 
+    tmp_path = bin_dir / f"{exe_name}.tmp"
     try:
-        urllib.request.urlretrieve(url, str(local_path))
+        urllib.request.urlretrieve(url, str(tmp_path))
         print("Download complete.")
 
         # Chmod on Unix platforms
         if platform.system() != "Windows":
-            print(f"Setting executable permissions on {local_path}...")
-            os.chmod(local_path, 0o755)
+            print(f"Setting executable permissions on {tmp_path}...")
+            os.chmod(tmp_path, 0o755)
 
+        os.replace(tmp_path, local_path)
         return str(local_path)
     except Exception as e:
         print(f"Error downloading cloudflared: {e}")
+        if tmp_path.exists():
+            try:
+                os.remove(tmp_path)
+            except Exception as remove_err:
+                print(f"Error removing temporary file: {remove_err}")
         return None
 
 
@@ -97,7 +103,16 @@ def print_mcp_configs(public_url: str, token: Optional[str]):
     print("   - Name: gangway")
     print("   - Type: SSE")
     print(f"   - URL:  {sse_url}")
-    print("\n--- Claude Desktop Config (~/.code/claude_desktop_config.json) ---")
+    # Correct path depending on platform
+    sys_name = platform.system()
+    if sys_name == "Darwin":
+        config_path = "~/Library/Application Support/Claude/claude_desktop_config.json"
+    elif sys_name == "Windows":
+        config_path = "%APPDATA%\\Claude\\claude_desktop_config.json"
+    else:
+        config_path = "~/.config/Claude/claude_desktop_config.json"
+
+    print(f"\n--- Claude Desktop Config ({config_path}) ---")
 
     claude_config = {
         "mcpServers": {
@@ -139,16 +154,33 @@ def start_tunnel_background(
         stderr=subprocess.PIPE,
     )
 
-    # Thread to read stderr in background and place into a queue
-    q: Queue[bytes] = Queue()
+    # Thread-safe state for communicating results from the background thread
+    lock = threading.Lock()
+    state = {
+        "public_url": None,
+        "startup_logs": [],
+        "url_found": False,
+    }
 
-    def reader_thread(stream, queue):
-        for line in iter(stream.readline, b""):
-            queue.put(line)
+    url_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+
+    def reader_thread(stream):
+        for line_bytes in iter(stream.readline, b""):
+            line_str = line_bytes.decode("utf-8", errors="replace")
+            print(f"[cloudflared] {line_str.strip()}", flush=True)
+
+            with lock:
+                url_found = state["url_found"]
+                if not url_found:
+                    state["startup_logs"].append(line_str)
+                    match = url_pattern.search(line_str)
+                    if match:
+                        state["public_url"] = match.group(0)
+                        state["url_found"] = True
         stream.close()
 
     t = threading.Thread(
-        target=reader_thread, args=(_tunnel_process.stderr, q), daemon=True
+        target=reader_thread, args=(_tunnel_process.stderr,), daemon=True
     )
     t.start()
 
@@ -163,32 +195,26 @@ def start_tunnel_background(
     )
     t_out.start()
 
-    public_url: Optional[str] = None
     start_time = time.time()
-    url_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+    public_url: Optional[str] = None
 
     while time.time() - start_time < timeout:
         # Check if process died
         if _tunnel_process.poll() is not None:
-            err_msg = []
-            while not q.empty():
-                err_msg.append(q.get().decode("utf-8", errors="replace"))
+            # Let thread finish reading any final stderr lines
+            t.join(timeout=1.0)
+            with lock:
+                err_msg = "".join(state["startup_logs"])
             raise RuntimeError(
-                f"cloudflared process terminated unexpectedly. Logs:\n{''.join(err_msg)}"
+                f"cloudflared process terminated unexpectedly. Logs:\n{err_msg}"
             )
 
-        # Get line from queue
-        if not q.empty():
-            line_bytes = q.get()
-            line_str = line_bytes.decode("utf-8", errors="replace")
-            print(f"[cloudflared] {line_str.strip()}")
-
-            match = url_pattern.search(line_str)
-            if match:
-                public_url = match.group(0)
+        with lock:
+            if state["url_found"]:
+                public_url = state["public_url"]
                 break
-        else:
-            time.sleep(0.1)
+
+        time.sleep(0.1)
 
     if not public_url:
         stop_tunnel()
