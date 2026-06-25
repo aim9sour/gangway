@@ -17,6 +17,13 @@ Install from your local build or PyPI:
 pip install gangway
 ```
 
+### Run with uvx (No Installation Required)
+
+You can run Gangway as an MCP server instantly without installing it globally using `uvx`:
+```bash
+uvx gangway --transport stdio --token YOUR_SECRET_TOKEN --allowed-root /path/to/sandbox
+```
+
 ## Configuration
 
 Gangway can be configured via Environment Variables, JSON/TOML configuration files, or CLI arguments (CLI arguments take the highest precedence).
@@ -47,6 +54,35 @@ Using a configuration file:
 ```bash
 gangway --config /path/to/config.toml --transport sse
 ```
+
+## Register in AI Clients (Claude Desktop / Cursor)
+
+### Claude Desktop
+Add the following to your `claude_desktop_config.json` (usually located at `%APPDATA%\Claude\claude_desktop_config.json` on Windows or `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "gangway": {
+      "command": "uvx",
+      "args": [
+        "gangway",
+        "--transport", "stdio",
+        "--token", "YOUR_SECRET_TOKEN",
+        "--allowed-root", "/path/to/sandbox"
+      ]
+    }
+  }
+}
+```
+
+### Cursor / VSCode
+1. Open Cursor Settings -> Features -> MCP.
+2. Click **+ Add New MCP Server**.
+3. Enter:
+   * **Name**: `gangway`
+   * **Type**: `command`
+   * **Command**: `uvx gangway --transport stdio --token YOUR_SECRET_TOKEN --allowed-root /path/to/sandbox`
 
 ## Exposed MCP Tools
 
