@@ -81,3 +81,33 @@ def test_load_config_allowed_root_resolution():
     expected = str(Path(relative_path).resolve())
     assert cfg.allowed_root == expected
 
+
+def test_load_config_invalid_ports():
+    import pytest
+
+    # 1. Invalid port in environment variables
+    os.environ["GANGWAY_PORT"] = "invalid_port"
+    try:
+        with pytest.raises(ValueError) as excinfo:
+            load_config()
+        assert "Invalid port in environment variable GANGWAY_PORT" in str(excinfo.value)
+    finally:
+        os.environ.pop("GANGWAY_PORT", None)
+
+    # 2. Invalid port in config file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump({"port": "invalid_port"}, f)
+        config_path = f.name
+    try:
+        with pytest.raises(ValueError) as excinfo:
+            load_config(config_file=config_path)
+        assert "Invalid port in configuration file" in str(excinfo.value)
+    finally:
+        os.unlink(config_path)
+
+    # 3. Invalid port in CLI args
+    with pytest.raises(ValueError) as excinfo:
+        load_config(port="invalid_port")
+    assert "Invalid port" in str(excinfo.value)
+
+
