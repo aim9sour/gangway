@@ -4,17 +4,20 @@ from pathlib import Path
 from typing import Optional
 from gangway.core.sandbox import verify_path
 
+
 class StateManager:
-    def __init__(self, allowed_root: Optional[str] = None, state_file_path: Optional[str] = None):
+    def __init__(
+        self, allowed_root: Optional[str] = None, state_file_path: Optional[str] = None
+    ):
         self.allowed_root = Path(allowed_root).resolve() if allowed_root else None
-        
+
         if state_file_path:
             self.state_file = Path(state_file_path)
         elif self.allowed_root:
             self.state_file = self.allowed_root / ".gangway_state.json"
         else:
             self.state_file = Path(os.getcwd()) / ".gangway_state.json"
-            
+
         self._current_cwd = self._load_state()
 
     def _load_state(self) -> Path:
@@ -51,12 +54,16 @@ class StateManager:
         target_path = Path(path)
         if not target_path.is_absolute():
             target_path = self._current_cwd / target_path
-            
-        resolved_path = Path(verify_path(str(target_path), str(self.allowed_root) if self.allowed_root else None))
-        
+
+        resolved_path = Path(
+            verify_path(
+                str(target_path), str(self.allowed_root) if self.allowed_root else None
+            )
+        )
+
         if not resolved_path.is_dir():
             raise NotADirectoryError(f"'{path}' is not a directory")
-            
+
         self._current_cwd = resolved_path
         self._save_state()
         return str(self._current_cwd)
@@ -65,4 +72,6 @@ class StateManager:
         target_path = Path(path)
         if not target_path.is_absolute():
             target_path = self._current_cwd / target_path
-        return verify_path(str(target_path), str(self.allowed_root) if self.allowed_root else None)
+        return verify_path(
+            str(target_path), str(self.allowed_root) if self.allowed_root else None
+        )

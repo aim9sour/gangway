@@ -69,6 +69,7 @@ def test_load_config_toml():
 
 def test_load_config_missing_file():
     import pytest
+
     with pytest.raises(FileNotFoundError):
         load_config(config_file="non_existent_file.json")
 
@@ -78,6 +79,7 @@ def test_load_config_allowed_root_resolution():
     relative_path = "./some_rel_path"
     cfg = load_config(allowed_root=relative_path)
     from pathlib import Path
+
     expected = str(Path(relative_path).resolve())
     assert cfg.allowed_root == expected
 
@@ -109,5 +111,3 @@ def test_load_config_invalid_ports():
     with pytest.raises(ValueError) as excinfo:
         load_config(port="invalid_port")
     assert "Invalid port" in str(excinfo.value)
-
-

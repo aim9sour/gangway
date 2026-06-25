@@ -38,10 +38,12 @@ def test_mcp_sse_server_auth_success():
     async def run():
         # GET Request Setup
         sent_messages = []
+
         async def mock_send(message: dict):
             sent_messages.append(message)
 
         disconnect_event = anyio.Event()
+
         async def mock_receive():
             await disconnect_event.wait()
             return {"type": "http.disconnect"}
@@ -52,7 +54,7 @@ def test_mcp_sse_server_auth_success():
             "method": "GET",
             "headers": [
                 (b"authorization", b"Bearer secret_key"),
-                (b"host", b"localhost")
+                (b"host", b"localhost"),
             ],
             "query_string": b"",
             "path": "/sse",
@@ -63,7 +65,10 @@ def test_mcp_sse_server_auth_success():
         async with anyio.create_task_group() as tg:
             tg.start_soon(mcp_server.handle_sse, sse_request)
             await anyio.sleep(0.1)
-            assert any(msg.get("type") == "http.response.start" and msg.get("status") == 200 for msg in sent_messages)
+            assert any(
+                msg.get("type") == "http.response.start" and msg.get("status") == 200
+                for msg in sent_messages
+            )
             tg.cancel_scope.cancel()
 
         # Test 2: Access SSE with query param
@@ -75,7 +80,10 @@ def test_mcp_sse_server_auth_success():
         async with anyio.create_task_group() as tg:
             tg.start_soon(mcp_server.handle_sse, sse_request)
             await anyio.sleep(0.1)
-            assert any(msg.get("type") == "http.response.start" and msg.get("status") == 200 for msg in sent_messages)
+            assert any(
+                msg.get("type") == "http.response.start" and msg.get("status") == 200
+                for msg in sent_messages
+            )
             tg.cancel_scope.cancel()
 
     anyio.run(run)
@@ -155,10 +163,12 @@ def test_mcp_full_client_integration():
 
         # GET Request Setup
         sent_messages = []
+
         async def mock_send(message: dict):
             sent_messages.append(message)
 
         disconnect_event = anyio.Event()
+
         async def mock_receive():
             await disconnect_event.wait()
             return {"type": "http.disconnect"}
@@ -168,7 +178,7 @@ def test_mcp_full_client_integration():
             "method": "GET",
             "headers": [
                 (b"authorization", b"Bearer secret_key"),
-                (b"host", b"localhost")
+                (b"host", b"localhost"),
             ],
             "query_string": b"",
             "path": "/sse",
@@ -181,10 +191,16 @@ def test_mcp_full_client_integration():
                 tg.start_soon(mcp_server.handle_sse, sse_request)
 
                 # Wait for endpoint event
-                while not any(msg.get("type") == "http.response.body" for msg in sent_messages):
+                while not any(
+                    msg.get("type") == "http.response.body" for msg in sent_messages
+                ):
                     await anyio.sleep(0.01)
 
-                body_msg = next(msg for msg in sent_messages if msg.get("type") == "http.response.body")
+                body_msg = next(
+                    msg
+                    for msg in sent_messages
+                    if msg.get("type") == "http.response.body"
+                )
                 body_str = body_msg["body"].decode()
 
                 session_id = None
@@ -192,7 +208,7 @@ def test_mcp_full_client_integration():
                     if "session_id=" in line:
                         session_id = line.split("session_id=")[1].strip()
                         break
-                
+
                 assert session_id is not None
 
                 # Helper function to send POST requests
@@ -201,12 +217,14 @@ def test_mcp_full_client_integration():
                     post_receive_queue = [
                         {"type": "http.request", "body": payload, "more_body": False}
                     ]
+
                     async def post_receive():
                         if post_receive_queue:
                             return post_receive_queue.pop(0)
                         return {"type": "http.disconnect"}
 
                     post_sent = []
+
                     async def post_send(message: dict):
                         post_sent.append(message)
 
@@ -216,57 +234,82 @@ def test_mcp_full_client_integration():
                         "headers": [
                             (b"authorization", b"Bearer secret_key"),
                             (b"content-type", b"application/json"),
-                            (b"host", b"localhost")
+                            (b"host", b"localhost"),
                         ],
                         "query_string": f"session_id={session_id}".encode(),
                         "path": "/messages/",
                         "root_path": "",
                     }
-                    post_request = Request(post_scope, receive=post_receive, send=post_send)
+                    post_request = Request(
+                        post_scope, receive=post_receive, send=post_send
+                    )
                     await mcp_server.handle_messages_post(post_request)
-                    assert any(msg.get("type") == "http.response.start" and msg.get("status") == 202 for msg in post_sent)
+                    assert any(
+                        msg.get("type") == "http.response.start"
+                        and msg.get("status") == 202
+                        for msg in post_sent
+                    )
 
                 # 1. Send initialize request
-                await send_post({
-                    "jsonrpc": "2.0",
-                    "method": "initialize",
-                    "params": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {},
-                        "clientInfo": {
-                            "name": "test-client",
-                            "version": "1.0.0"
-                        }
-                    },
-                    "id": 1
-                })
+                await send_post(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "initialize",
+                        "params": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {},
+                            "clientInfo": {"name": "test-client", "version": "1.0.0"},
+                        },
+                        "id": 1,
+                    }
+                )
 
                 # Wait for initialize response
-                while len([msg for msg in sent_messages if msg.get("type") == "http.response.body"]) < 2:
+                while (
+                    len(
+                        [
+                            msg
+                            for msg in sent_messages
+                            if msg.get("type") == "http.response.body"
+                        ]
+                    )
+                    < 2
+                ):
                     await anyio.sleep(0.01)
 
                 # 2. Send initialized notification
-                await send_post({
-                    "jsonrpc": "2.0",
-                    "method": "notifications/initialized"
-                })
+                await send_post(
+                    {"jsonrpc": "2.0", "method": "notifications/initialized"}
+                )
 
                 # 3. Send tool call request
-                await send_post({
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "get_working_directory",
-                        "arguments": {}
-                    },
-                    "id": 2
-                })
+                await send_post(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "tools/call",
+                        "params": {"name": "get_working_directory", "arguments": {}},
+                        "id": 2,
+                    }
+                )
 
                 # Wait for tool call response (should be 3rd body event)
-                while len([msg for msg in sent_messages if msg.get("type") == "http.response.body"]) < 3:
+                while (
+                    len(
+                        [
+                            msg
+                            for msg in sent_messages
+                            if msg.get("type") == "http.response.body"
+                        ]
+                    )
+                    < 3
+                ):
                     await anyio.sleep(0.01)
 
-                body_msgs = [msg for msg in sent_messages if msg.get("type") == "http.response.body"]
+                body_msgs = [
+                    msg
+                    for msg in sent_messages
+                    if msg.get("type") == "http.response.body"
+                ]
                 tool_response_body = body_msgs[2]["body"].decode()
 
                 data_json = None
@@ -274,7 +317,7 @@ def test_mcp_full_client_integration():
                     if line.startswith("data:"):
                         data_json = json.loads(line[5:].strip())
                         break
-                
+
                 assert data_json is not None
                 assert data_json["id"] == 2
                 assert "result" in data_json
@@ -288,16 +331,19 @@ def test_mcp_full_client_integration():
 
 def test_mcp_bearer_auth_case_insensitive():
     from starlette.requests import Request
+
     cfg = Config(token="secret_key")
     mcp_server.config = cfg
 
     # Test lowercase bearer
     async def run_bearer():
         sent_messages = []
+
         async def mock_send(message: dict):
             sent_messages.append(message)
 
         disconnect_event = anyio.Event()
+
         async def mock_receive():
             await disconnect_event.wait()
             return {"type": "http.disconnect"}
@@ -307,7 +353,7 @@ def test_mcp_bearer_auth_case_insensitive():
             "method": "GET",
             "headers": [
                 (b"authorization", b"bearer secret_key"),
-                (b"host", b"localhost")
+                (b"host", b"localhost"),
             ],
             "query_string": b"",
             "path": "/sse",
@@ -318,7 +364,10 @@ def test_mcp_bearer_auth_case_insensitive():
         async with anyio.create_task_group() as tg:
             tg.start_soon(mcp_server.handle_sse, sse_request)
             await anyio.sleep(0.1)
-            assert any(msg.get("type") == "http.response.start" and msg.get("status") == 200 for msg in sent_messages)
+            assert any(
+                msg.get("type") == "http.response.start" and msg.get("status") == 200
+                for msg in sent_messages
+            )
             tg.cancel_scope.cancel()
 
     anyio.run(run_bearer)
@@ -326,6 +375,7 @@ def test_mcp_bearer_auth_case_insensitive():
 
 def test_mcp_argument_casting():
     import base64
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_resolved = str(Path(tmpdir).resolve())
         cfg = Config(token="secret_key", allowed_root=tmpdir_resolved)
@@ -340,8 +390,7 @@ def test_mcp_argument_casting():
         async def run_casting():
             # preview_file with head/tail as stringy numeric values
             res = await mcp_server.handle_call_tool(
-                "preview_file",
-                {"path": "test_cast.txt", "head": "2", "tail": "1"}
+                "preview_file", {"path": "test_cast.txt", "head": "2", "tail": "1"}
             )
             assert not res.isError
             assert "line1" in res.content[0].text
@@ -353,12 +402,10 @@ def test_mcp_argument_casting():
 
             res_dl = await mcp_server.handle_call_tool(
                 "download_chunk",
-                {"file_path": "chunk_test.bin", "chunk_index": "0", "chunk_size": "5"}
+                {"file_path": "chunk_test.bin", "chunk_index": "0", "chunk_size": "5"},
             )
             assert not res_dl.isError
             data = json.loads(res_dl.content[0].text)
             assert base64.b64decode(data["data_b64"]) == b"hello"
 
         anyio.run(run_casting)
-
-

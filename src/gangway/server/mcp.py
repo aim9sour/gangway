@@ -231,8 +231,12 @@ async def handle_call_tool(name: str, arguments: dict):
         elif name == "preview_file":
             raw_path = arguments["path"]
             resolved = state_manager.resolve_path(raw_path)
-            head = int(arguments.get("head")) if arguments.get("head") is not None else 80
-            tail = int(arguments.get("tail")) if arguments.get("tail") is not None else 40
+            head = (
+                int(arguments.get("head")) if arguments.get("head") is not None else 80
+            )
+            tail = (
+                int(arguments.get("tail")) if arguments.get("tail") is not None else 40
+            )
             res = files_core.preview_file(
                 resolved, config.allowed_root, head=head, tail=tail
             )
@@ -276,7 +280,11 @@ async def handle_call_tool(name: str, arguments: dict):
             raw_path = arguments["file_path"]
             resolved = state_manager.resolve_path(raw_path)
             chunk_idx = int(arguments["chunk_index"])
-            chunk_size = int(arguments.get("chunk_size")) if arguments.get("chunk_size") is not None else 65536
+            chunk_size = (
+                int(arguments.get("chunk_size"))
+                if arguments.get("chunk_size") is not None
+                else 65536
+            )
             res = files_core.download_chunk(
                 resolved, chunk_idx, chunk_size, config.allowed_root
             )
@@ -355,8 +363,12 @@ async def handle_call_tool(name: str, arguments: dict):
 
         elif name == "read_job_logs":
             job_id = arguments["job_id"]
-            head = int(arguments.get("head")) if arguments.get("head") is not None else 100
-            tail = int(arguments.get("tail")) if arguments.get("tail") is not None else 100
+            head = (
+                int(arguments.get("head")) if arguments.get("head") is not None else 100
+            )
+            tail = (
+                int(arguments.get("tail")) if arguments.get("tail") is not None else 100
+            )
             logs = job_manager.read_job_logs(job_id, head=head, tail=tail)
             return types.CallToolResult(
                 content=[types.TextContent(type="text", text=logs)]
@@ -421,9 +433,7 @@ async def handle_sse(request: Request):
 async def handle_messages_post(request: Request):
     ensure_globals()
     verify_token(request)
-    return await sse.handle_post_message(
-        request.scope, request.receive, request._send
-    )
+    return await sse.handle_post_message(request.scope, request.receive, request._send)
 
 
 app = Starlette(

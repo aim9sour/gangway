@@ -36,7 +36,9 @@ def load_config(
         try:
             cfg.port = int(env_port)
         except ValueError as e:
-            raise ValueError(f"Invalid port in environment variable GANGWAY_PORT: {env_port}") from e
+            raise ValueError(
+                f"Invalid port in environment variable GANGWAY_PORT: {env_port}"
+            ) from e
     if env_host:
         cfg.host = env_host
 
@@ -74,7 +76,9 @@ def load_config(
             try:
                 cfg.port = int(data["port"])
             except ValueError as e:
-                raise ValueError(f"Invalid port in configuration file: {data['port']}") from e
+                raise ValueError(
+                    f"Invalid port in configuration file: {data['port']}"
+                ) from e
         if "host" in data:
             cfg.host = data["host"]
 
@@ -94,7 +98,7 @@ def load_config(
     # 5. Resolve allowed_root if specified
     if cfg.allowed_root is not None:
         from pathlib import Path
+
         cfg.allowed_root = str(Path(cfg.allowed_root).resolve())
 
     return cfg
-

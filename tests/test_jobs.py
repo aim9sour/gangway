@@ -203,4 +203,3 @@ def test_kill_job_safety_with_nosuchprocess():
             assert res is True
             mock_parent.children.assert_called_once()
             mock_parent.kill.assert_called_once()
-

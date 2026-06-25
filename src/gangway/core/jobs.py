@@ -62,7 +62,7 @@ class JobManager:
                 cwd=cwd,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                start_new_session=(sys.platform != "win32")
+                start_new_session=(sys.platform != "win32"),
             )
             self._active_processes[job_id] = proc
             try:
@@ -192,7 +192,10 @@ class JobManager:
             try:
                 parent = psutil.Process(pid)
                 stored_create_time = meta.get("create_time")
-                if stored_create_time is not None and parent.create_time() == stored_create_time:
+                if (
+                    stored_create_time is not None
+                    and parent.create_time() == stored_create_time
+                ):
                     try:
                         procs = parent.children(recursive=True)
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
