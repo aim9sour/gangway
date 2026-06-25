@@ -182,25 +182,22 @@ def compress_archive(archive_path: str, source_dir: str, allowed_root: Optional[
     target_archive = verify_path(archive_path, allowed_root)
     target_source = verify_path(source_dir, allowed_root)
     
-    if format == "zip":
+    fmt_lower = format.lower()
+    if fmt_lower == "zip":
         base_name = target_archive[:-4] if target_archive.lower().endswith(".zip") else target_archive
-        shutil.make_archive(base_name, "zip", target_source)
-        if not target_archive.lower().endswith(".zip"):
-            target_archive += ".zip"
-    elif format in ("tar.gz", "tgz"):
+        actual_path = shutil.make_archive(base_name, "zip", target_source)
+    elif fmt_lower in ("tar.gz", "tgz", "gztar"):
         if target_archive.lower().endswith(".tar.gz"):
             base_name = target_archive[:-7]
         elif target_archive.lower().endswith(".tgz"):
             base_name = target_archive[:-4]
         else:
             base_name = target_archive
-        shutil.make_archive(base_name, "gztar", target_source)
-        if not target_archive.lower().endswith((".tar.gz", ".tgz")):
-            target_archive += ".tar.gz"
+        actual_path = shutil.make_archive(base_name, "gztar", target_source)
     else:
         raise ValueError("Unsupported archive format. Choose 'zip' or 'tar.gz'.")
         
-    return target_archive
+    return actual_path
 
 
 def extract_archive(archive_path: str, extract_dir: str, allowed_root: Optional[str]) -> str:
