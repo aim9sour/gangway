@@ -24,7 +24,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
-dependencies = []
+dependencies = [
+    "tomli; python_version < '3.11'",
+    "psutil>=5.9.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/aim9sour/gangway"
