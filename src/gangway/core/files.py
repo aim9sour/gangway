@@ -1,5 +1,9 @@
 import os
 import glob
+import base64
+import shutil
+import zipfile
+import tarfile
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from gangway.core.sandbox import verify_path
@@ -104,3 +108,122 @@ def project_overview(path_str: str, allowed_root: Optional[str]) -> Dict[str, An
     overview["recent_files"] = [os.path.relpath(x[0], target) for x in all_files_stat[:10]]
     
     return overview
+
+
+def upload_chunk(file_path: str, chunk_index: int, total_chunks: int, data_b64: str, allowed_root: Optional[str]) -> bool:
+    target = verify_path(file_path, allowed_root)
+    
+    # Store in a temporary folder
+    temp_dir = os.path.join(os.path.dirname(target), ".gangway_uploads")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    chunk_file = os.path.join(temp_dir, f"{os.path.basename(target)}.part_{chunk_index}")
+    with open(chunk_file, "w", encoding="utf-8") as f:
+        f.write(data_b64)
+    return True
+
+
+def assemble_upload(file_path: str, total_chunks: int, allowed_root: Optional[str]) -> str:
+    target = verify_path(file_path, allowed_root)
+    temp_dir = os.path.join(os.path.dirname(target), ".gangway_uploads")
+    
+    # Read and concatenate
+    chunks = []
+    for idx in range(total_chunks):
+        part_path = os.path.join(temp_dir, f"{os.path.basename(target)}.part_{idx}")
+        if not os.path.exists(part_path):
+            raise FileNotFoundError(f"Missing chunk index {idx} at '{part_path}'")
+        with open(part_path, "r", encoding="utf-8") as infile:
+            chunks.append(infile.read())
+        os.remove(part_path)
+            
+    # Decode and write
+    full_data = base64.b64decode("".join(chunks))
+    with open(target, "wb") as outfile:
+        outfile.write(full_data)
+        
+    # Clean up directory if empty
+    try:
+        os.rmdir(temp_dir)
+    except OSError:
+        pass
+        
+    return target
+
+
+def download_chunk(file_path: str, chunk_index: int, chunk_size: int, allowed_root: Optional[str]) -> Dict[str, Any]:
+    target = verify_path(file_path, allowed_root)
+    if not os.path.exists(target):
+        raise FileNotFoundError(f"File not found: '{file_path}'")
+        
+    file_size = os.path.getsize(target)
+    offset = chunk_index * chunk_size
+    
+    if offset >= file_size:
+        return {
+            "chunk_index": chunk_index,
+            "data_b64": "",
+            "has_more": False
+        }
+        
+    with open(target, "rb") as f:
+        f.seek(offset)
+        data = f.read(chunk_size)
+        
+    has_more = (offset + len(data)) < file_size
+    return {
+        "chunk_index": chunk_index,
+        "data_b64": base64.b64encode(data).decode("utf-8"),
+        "has_more": has_more
+    }
+
+
+def compress_archive(archive_path: str, source_dir: str, allowed_root: Optional[str], format: str = "zip") -> str:
+    target_archive = verify_path(archive_path, allowed_root)
+    target_source = verify_path(source_dir, allowed_root)
+    
+    if format == "zip":
+        base_name = target_archive[:-4] if target_archive.lower().endswith(".zip") else target_archive
+        shutil.make_archive(base_name, "zip", target_source)
+        if not target_archive.lower().endswith(".zip"):
+            target_archive += ".zip"
+    elif format in ("tar.gz", "tgz"):
+        if target_archive.lower().endswith(".tar.gz"):
+            base_name = target_archive[:-7]
+        elif target_archive.lower().endswith(".tgz"):
+            base_name = target_archive[:-4]
+        else:
+            base_name = target_archive
+        shutil.make_archive(base_name, "gztar", target_source)
+        if not target_archive.lower().endswith((".tar.gz", ".tgz")):
+            target_archive += ".tar.gz"
+    else:
+        raise ValueError("Unsupported archive format. Choose 'zip' or 'tar.gz'.")
+        
+    return target_archive
+
+
+def extract_archive(archive_path: str, extract_dir: str, allowed_root: Optional[str]) -> str:
+    target_archive = verify_path(archive_path, allowed_root)
+    target_extract = verify_path(extract_dir, allowed_root)
+    
+    os.makedirs(target_extract, exist_ok=True)
+    
+    if target_archive.lower().endswith(".zip"):
+        with zipfile.ZipFile(target_archive, "r") as zip_ref:
+            # security path traversal check for zip entries
+            for member in zip_ref.namelist():
+                member_path = os.path.join(target_extract, member)
+                verify_path(member_path, allowed_root)
+            zip_ref.extractall(target_extract)
+    elif target_archive.lower().endswith((".tar.gz", ".tgz")):
+        with tarfile.open(target_archive, "r:gz") as tar_ref:
+            for member in tar_ref.getmembers():
+                member_path = os.path.join(target_extract, member.name)
+                verify_path(member_path, allowed_root)
+            tar_ref.extractall(target_extract)
+    else:
+        raise ValueError("Unsupported archive format for extraction. Use .zip or .tar.gz / .tgz")
+        
+    return target_extract
+

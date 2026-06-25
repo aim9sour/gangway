@@ -1,7 +1,13 @@
 import tempfile
 import os
 import pytest
-from gangway.core.files import list_directory, glob_search, preview_file, project_overview
+import base64
+import zipfile
+import tarfile
+from gangway.core.files import (
+    list_directory, glob_search, preview_file, project_overview,
+    upload_chunk, assemble_upload, download_chunk, compress_archive, extract_archive
+)
 
 def test_list_directory():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -151,3 +157,131 @@ def test_project_overview():
         outside_path = os.path.join(tmpdir, "..")
         with pytest.raises(PermissionError):
             project_overview(outside_path, tmpdir)
+
+
+def test_chunked_transfer_and_archives():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_path = os.path.join(tmpdir, "test_binary.bin")
+        data = b"Hello, this is a binary chunk transfer test!"
+        data_b64 = base64.b64encode(data).decode("utf-8")
+        
+        # Split into 2 chunks
+        chunk1 = data_b64[:len(data_b64)//2]
+        chunk2 = data_b64[len(data_b64)//2:]
+        
+        assert upload_chunk(file_path, 0, 2, chunk1, tmpdir) is True
+        assert upload_chunk(file_path, 1, 2, chunk2, tmpdir) is True
+        
+        final_path = assemble_upload(file_path, 2, tmpdir)
+        with open(final_path, "rb") as f:
+            assert f.read() == data
+            
+        # Test download chunk
+        dl = download_chunk(file_path, 0, 10, tmpdir)
+        assert dl["chunk_index"] == 0
+        assert dl["has_more"] is True
+        assert base64.b64decode(dl["data_b64"]) == data[:10]
+        
+        dl_last = download_chunk(file_path, 4, 10, tmpdir)
+        assert dl_last["chunk_index"] == 4
+        assert dl_last["has_more"] is False
+        assert base64.b64decode(dl_last["data_b64"]) == data[40:]
+
+        # Test download chunk with nonexistent file
+        with pytest.raises(FileNotFoundError):
+            download_chunk(os.path.join(tmpdir, "missing.bin"), 0, 10, tmpdir)
+
+        # Archive compression/decompression for zip
+        archive_file = os.path.join(tmpdir, "archive.zip")
+        sub_dir = os.path.join(tmpdir, "subdir")
+        os.makedirs(sub_dir, exist_ok=True)
+        with open(os.path.join(sub_dir, "inner.txt"), "w") as f:
+            f.write("archived content")
+            
+        compress_archive(archive_file, sub_dir, tmpdir, format="zip")
+        assert os.path.exists(archive_file)
+        
+        out_dir = os.path.join(tmpdir, "out")
+        extract_archive(archive_file, out_dir, tmpdir)
+        with open(os.path.join(out_dir, "inner.txt"), "r") as f:
+            assert f.read() == "archived content"
+
+        # Archive compression/decompression for tar.gz
+        tar_archive_file = os.path.join(tmpdir, "archive.tar.gz")
+        compress_archive(tar_archive_file, sub_dir, tmpdir, format="tar.gz")
+        # May be written as archive.tar.gz
+        assert os.path.exists(tar_archive_file) or os.path.exists(tar_archive_file + ".tar.gz")
+        actual_tar_path = tar_archive_file if os.path.exists(tar_archive_file) else tar_archive_file + ".tar.gz"
+
+        tar_out_dir = os.path.join(tmpdir, "tar_out")
+        extract_archive(actual_tar_path, tar_out_dir, tmpdir)
+        with open(os.path.join(tar_out_dir, "inner.txt"), "r") as f:
+            assert f.read() == "archived content"
+
+        # Test unsupported format
+        with pytest.raises(ValueError):
+            compress_archive(os.path.join(tmpdir, "archive.rar"), sub_dir, tmpdir, format="rar")
+        with pytest.raises(ValueError):
+            extract_archive(os.path.join(tmpdir, "archive.rar"), tar_out_dir, tmpdir)
+
+
+def test_chunked_transfer_and_archives_sandboxing():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create allowed root and outside directory
+        allowed_dir = os.path.join(tmpdir, "allowed")
+        outside_dir = os.path.join(tmpdir, "outside")
+        os.makedirs(allowed_dir, exist_ok=True)
+        os.makedirs(outside_dir, exist_ok=True)
+
+        outside_file = os.path.join(outside_dir, "leak.bin")
+        data_b64 = base64.b64encode(b"secret").decode("utf-8")
+
+        # 1. upload_chunk sandboxing
+        with pytest.raises(PermissionError):
+            upload_chunk(outside_file, 0, 1, data_b64, allowed_dir)
+
+        # 2. assemble_upload sandboxing
+        with pytest.raises(PermissionError):
+            assemble_upload(outside_file, 1, allowed_dir)
+
+        # 3. download_chunk sandboxing
+        with pytest.raises(PermissionError):
+            download_chunk(outside_file, 0, 10, allowed_dir)
+
+        # 4. compress_archive sandboxing
+        archive_file = os.path.join(allowed_dir, "archive.zip")
+        with pytest.raises(PermissionError):
+            # source outside allowed root
+            compress_archive(archive_file, outside_dir, allowed_dir)
+        with pytest.raises(PermissionError):
+            # target outside allowed root
+            compress_archive(os.path.join(outside_dir, "archive.zip"), allowed_dir, allowed_dir)
+
+        # 5. extract_archive sandboxing
+        # Write a dummy zip first
+        dummy_zip = os.path.join(allowed_dir, "dummy.zip")
+        with zipfile.ZipFile(dummy_zip, "w") as zf:
+            zf.writestr("test.txt", "hello")
+        with pytest.raises(PermissionError):
+            # archive outside allowed root
+            extract_archive(os.path.join(outside_dir, "dummy.zip"), allowed_dir, allowed_dir)
+        with pytest.raises(PermissionError):
+            # target extraction outside allowed root
+            extract_archive(dummy_zip, outside_dir, allowed_dir)
+
+        # 6. Malicious path traversal in Zip extraction
+        traversal_zip = os.path.join(allowed_dir, "traversal.zip")
+        with zipfile.ZipFile(traversal_zip, "w") as zf:
+            zf.writestr("../traversal.txt", "evil")
+        with pytest.raises(PermissionError):
+            extract_archive(traversal_zip, allowed_dir, allowed_dir)
+
+        # 7. Malicious path traversal in Tar extraction
+        traversal_tar = os.path.join(allowed_dir, "traversal.tar.gz")
+        with tarfile.open(traversal_tar, "w:gz") as tf:
+            ti = tarfile.TarInfo(name="../traversal.txt")
+            import io
+            tf.addfile(ti, io.BytesIO(b"evil"))
+        with pytest.raises(PermissionError):
+            extract_archive(traversal_tar, allowed_dir, allowed_dir)
+
