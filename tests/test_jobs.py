@@ -3,6 +3,7 @@ import tempfile
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import psutil
 from gangway.core.jobs import JobManager
 
 
@@ -168,3 +169,38 @@ def test_job_manager_unique_ids():
 
         ids = [jm._generate_job_id() for _ in range(1000)]
         assert len(ids) == len(set(ids))
+
+
+def test_kill_job_safety_with_nosuchprocess():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        allowed_root = Path(tmpdir).resolve()
+        jm = JobManager(allowed_root=str(allowed_root))
+
+        job_id = "job_test_kill_safety"
+        meta_file_path = jm.jobs_dir / f"{job_id}.json"
+        meta = {
+            "job_id": job_id,
+            "cmd": "dummy_cmd",
+            "pid": 99999,
+            "create_time": 123456.78,
+            "status": "running",
+            "exit_code": None,
+            "cwd": str(allowed_root),
+            "start_time": "2026-06-26T00:00:00Z",
+            "end_time": None,
+        }
+        jm._atomic_write_json(meta_file_path, meta)
+
+        # Mock parent process raising NoSuchProcess when children() is called
+        mock_parent = MagicMock()
+        mock_parent.create_time.return_value = 123456.78
+        mock_parent.children.side_effect = psutil.NoSuchProcess(99999)
+        mock_parent.kill.side_effect = psutil.NoSuchProcess(99999)
+
+        with patch("psutil.Process", return_value=mock_parent):
+            # Should not raise exception
+            res = jm.kill_job(job_id)
+            assert res is True
+            mock_parent.children.assert_called_once()
+            mock_parent.kill.assert_called_once()
+
