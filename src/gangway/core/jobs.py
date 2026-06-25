@@ -3,6 +3,8 @@ import sys
 import json
 import time
 import subprocess
+import uuid
+import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import psutil
@@ -40,7 +42,11 @@ class JobManager:
             raise e
 
     def _generate_job_id(self) -> str:
-        return f"job_{int(time.time() * 1000)}"
+        return f"job_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
+
+    def _validate_job_id(self, job_id: str) -> None:
+        if not isinstance(job_id, str) or not re.match(r"^[a-zA-Z0-9_-]+$", job_id):
+            raise ValueError(f"Invalid job ID: {job_id}")
 
     def start_job(self, cmd: str, cwd: str) -> str:
         job_id = self._generate_job_id()
@@ -59,12 +65,18 @@ class JobManager:
                 preexec_fn=None if sys.platform == "win32" else os.setsid,
             )
             self._active_processes[job_id] = proc
+            try:
+                p = psutil.Process(proc.pid)
+                create_time = p.create_time()
+            except Exception:
+                create_time = None
         except Exception as e:
             log_file.close()
             meta = {
                 "job_id": job_id,
                 "cmd": cmd,
                 "pid": None,
+                "create_time": None,
                 "status": "failed",
                 "exit_code": -1,
                 "cwd": cwd,
@@ -81,6 +93,7 @@ class JobManager:
             "job_id": job_id,
             "cmd": cmd,
             "pid": proc.pid,
+            "create_time": create_time,
             "status": "running",
             "exit_code": None,
             "cwd": cwd,
@@ -91,6 +104,7 @@ class JobManager:
         return job_id
 
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
+        self._validate_job_id(job_id)
         meta_file_path = self.jobs_dir / f"{job_id}.json"
         if not meta_file_path.exists():
             raise FileNotFoundError(f"Job '{job_id}' not found")
@@ -116,17 +130,23 @@ class JobManager:
             # Fallback to checking PID status
             pid = meta["pid"]
             alive = False
+            is_recycled = False
             if pid is not None:
                 try:
                     p = psutil.Process(pid)
                     if p.is_running() and p.status() != psutil.STATUS_ZOMBIE:
-                        alive = True
+                        stored_create_time = meta.get("create_time")
+                        if stored_create_time is not None:
+                            if p.create_time() == stored_create_time:
+                                alive = True
+                            else:
+                                is_recycled = True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
 
             if not alive:
                 exit_code = -1
-                if pid is not None:
+                if pid is not None and not is_recycled:
                     if sys.platform != "win32":
                         try:
                             res = os.waitpid(pid, os.WNOHANG)
@@ -162,6 +182,7 @@ class JobManager:
         return jobs
 
     def kill_job(self, job_id: str) -> bool:
+        self._validate_job_id(job_id)
         meta = self.get_job_status(job_id)
         if meta["status"] != "running":
             return False
@@ -170,13 +191,15 @@ class JobManager:
         if pid is not None:
             try:
                 parent = psutil.Process(pid)
-                procs = parent.children(recursive=True) + [parent]
-                for p in procs:
-                    try:
-                        p.kill()
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-                psutil.wait_procs(procs, timeout=3)
+                stored_create_time = meta.get("create_time")
+                if stored_create_time is not None and parent.create_time() == stored_create_time:
+                    procs = parent.children(recursive=True) + [parent]
+                    for p in procs:
+                        try:
+                            p.kill()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    psutil.wait_procs(procs, timeout=3)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
@@ -189,6 +212,7 @@ class JobManager:
         return True
 
     def read_job_logs(self, job_id: str, head: int = 100, tail: int = 100) -> str:
+        self._validate_job_id(job_id)
         log_file_path = self.jobs_dir / f"{job_id}.log"
         if not log_file_path.exists():
             return "[No logs found for this job]"
