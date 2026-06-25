@@ -22,6 +22,17 @@ def test_get_download_url():
             == "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
         )
 
+    # Windows arm64 fallback
+    with (
+        patch("platform.system", return_value="Windows"),
+        patch("platform.machine", return_value="arm64"),
+    ):
+        url = get_download_url()
+        assert (
+            url
+            == "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+        )
+
     # 2. Windows 386
     with (
         patch("platform.system", return_value="Windows"),
@@ -63,7 +74,7 @@ def test_get_download_url():
         url = get_download_url()
         assert (
             url
-            == "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
+            == "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz"
         )
 
     with (
@@ -73,7 +84,7 @@ def test_get_download_url():
         url = get_download_url()
         assert (
             url
-            == "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
+            == "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz"
         )
 
     # 6. Unsupported system
@@ -196,7 +207,7 @@ def test_start_tunnel_background_success():
         assert public_url == "https://test-tunnel.trycloudflare.com"
         mock_popen.assert_called_once()
         mock_print_configs.assert_called_once_with(
-            "https://test-tunnel.trycloudflare.com", "secret"
+            "https://test-tunnel.trycloudflare.com", "secret", host="127.0.0.1"
         )
 
 
@@ -238,3 +249,91 @@ def test_stop_tunnel():
         # Verify terminate or kill was called
         mock_process.terminate.assert_called_once()
         mock_process.wait.assert_called_once()
+
+
+def test_start_tunnel_background_host_resolution():
+    mock_process = MagicMock()
+    mock_process.poll.return_value = None
+    log_lines = [
+        b"Your quick tunnel has been created! Visit: https://test-tunnel.trycloudflare.com"
+    ]
+    mock_process.stderr.readline.side_effect = log_lines + [b""]
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/cloudflared"),
+        patch("subprocess.Popen", return_value=mock_process) as mock_popen,
+        patch("gangway.core.tunnel.print_mcp_configs") as mock_print_configs,
+    ):
+        # 1. Test host "0.0.0.0" maps to "127.0.0.1" for proxy target
+        start_tunnel_background(port=8000, token="secret", host="0.0.0.0")
+        mock_popen.assert_called_once()
+        cmd_args = mock_popen.call_args[0][0]
+        assert "http://127.0.0.1:8000" in cmd_args
+        mock_print_configs.assert_called_once_with(
+            "https://test-tunnel.trycloudflare.com", "secret", host="0.0.0.0"
+        )
+
+        mock_popen.reset_mock()
+        mock_print_configs.reset_mock()
+        mock_process.stderr.readline.side_effect = log_lines + [b""]
+
+        # 2. Test specific host (e.g. "localhost") passes through
+        start_tunnel_background(port=8000, token="secret", host="localhost")
+        cmd_args = mock_popen.call_args[0][0]
+        assert "http://localhost:8000" in cmd_args
+        mock_print_configs.assert_called_once_with(
+            "https://test-tunnel.trycloudflare.com", "secret", host="localhost"
+        )
+
+
+def test_get_cloudflared_path_download_darwin_tgz():
+    # Verify downloading and extracting a tgz file for Darwin arm64 works
+    with (
+        patch("shutil.which", return_value=None),
+        patch("pathlib.Path.home", return_value=Path("/home/user")),
+        patch("os.makedirs"),
+        patch("urllib.request.urlretrieve") as mock_urlretrieve,
+        patch("os.chmod") as mock_chmod,
+        patch("platform.system", return_value="Darwin"),
+        patch("platform.machine", return_value="arm64"),
+        # Mock Path.exists to return False so we run the download flow
+        patch.object(Path, "exists", return_value=False),
+        patch("tarfile.open") as mock_tar_open,
+        patch("os.remove") as mock_remove,
+    ):
+        # Set up tarfile mock
+        mock_tar = MagicMock()
+        mock_member = MagicMock()
+        mock_tar.getmember.return_value = mock_member
+        mock_tar_open.return_value.__enter__.return_value = mock_tar
+
+        path = get_cloudflared_path()
+        assert path == str(Path("/home/user/.gangway/bin/cloudflared"))
+
+        # Verify urlretrieve was called with the correct Darwin arm64 url
+        mock_urlretrieve.assert_called_once()
+        url = mock_urlretrieve.call_args[0][0]
+        assert (
+            url
+            == "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz"
+        )
+
+        # Verify tarfile open and extraction
+        mock_tar_open.assert_called_once()
+        open_args = mock_tar_open.call_args[0]
+        assert str(open_args[0]).endswith("cloudflared.tgz")
+        assert open_args[1] == "r:gz"
+
+        mock_tar.getmember.assert_called_once_with("cloudflared")
+        mock_tar.extract.assert_called_once_with(
+            mock_member, path=str(Path("/home/user/.gangway/bin"))
+        )
+
+        # Verify temp tgz file removal
+        mock_remove.assert_called_once()
+        assert str(mock_remove.call_args[0][0]).endswith("cloudflared.tgz")
+
+        # Verify executable chmod on the final bin path
+        mock_chmod.assert_called_once_with(
+            Path("/home/user/.gangway/bin/cloudflared"), 0o755
+        )

@@ -453,7 +453,8 @@ def start_sse_server(cfg: Config):
 
     if cfg.tunnel:
         from gangway.core.tunnel import start_tunnel_background
-        start_tunnel_background(cfg.port, cfg.token)
+
+        start_tunnel_background(cfg.port, cfg.token, host=cfg.host)
 
     logger.info(f"Starting MCP SSE server on {cfg.host}:{cfg.port}")
     uvicorn.run(app, host=cfg.host, port=cfg.port)

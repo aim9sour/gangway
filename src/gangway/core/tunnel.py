@@ -19,7 +19,7 @@ def get_download_url() -> Optional[str]:
     machine = platform.machine().lower()
 
     if sys_name == "Windows":
-        if machine in ("amd64", "x86_64"):
+        if machine in ("amd64", "x86_64", "arm64"):
             return "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
         elif machine in ("386", "i386", "i686"):
             return "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-386.exe"
@@ -29,9 +29,10 @@ def get_download_url() -> Optional[str]:
         elif machine in ("arm64", "aarch64"):
             return "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
     elif sys_name == "Darwin":
-        # There is no native arm64 binary for macOS trycloudflare download URL,
-        # but the amd64 version runs correctly on Apple Silicon via Rosetta or is a universal binary.
-        return "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
+        if machine in ("arm64", "aarch64"):
+            return "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz"
+        elif machine in ("amd64", "x86_64"):
+            return "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz"
     return None
 
 
@@ -60,22 +61,36 @@ def get_cloudflared_path() -> Optional[str]:
         return None
 
     os.makedirs(bin_dir, exist_ok=True)
-    print(f"Downloading cloudflared from {url} to {local_path}...")
 
-    tmp_path = bin_dir / f"{exe_name}.tmp"
+    is_tgz = url.endswith(".tgz") or url.endswith(".tar.gz")
+    tmp_path = bin_dir / (f"{exe_name}.tgz" if is_tgz else f"{exe_name}.tmp")
+    print(f"Downloading cloudflared from {url} to {tmp_path}...")
+
     try:
         urllib.request.urlretrieve(url, str(tmp_path))
         print("Download complete.")
 
-        # Chmod on Unix platforms
-        if platform.system() != "Windows":
-            print(f"Setting executable permissions on {tmp_path}...")
-            os.chmod(tmp_path, 0o755)
+        if is_tgz:
+            import tarfile
 
-        os.replace(tmp_path, local_path)
+            print(f"Extracting {tmp_path}...")
+            with tarfile.open(tmp_path, "r:gz") as tar:
+                member = tar.getmember("cloudflared")
+                tar.extract(member, path=str(bin_dir))
+            try:
+                os.remove(tmp_path)
+            except Exception as remove_err:
+                print(f"Error removing temporary archive: {remove_err}")
+        else:
+            os.replace(tmp_path, local_path)
+
+        if platform.system() != "Windows":
+            print(f"Setting executable permissions on {local_path}...")
+            os.chmod(local_path, 0o755)
+
         return str(local_path)
     except Exception as e:
-        print(f"Error downloading cloudflared: {e}")
+        print(f"Error downloading/extracting cloudflared: {e}")
         if tmp_path.exists():
             try:
                 os.remove(tmp_path)
@@ -84,7 +99,7 @@ def get_cloudflared_path() -> Optional[str]:
         return None
 
 
-def print_mcp_configs(public_url: str, token: Optional[str]):
+def print_mcp_configs(public_url: str, token: Optional[str], host: str = "127.0.0.1"):
     # Add token query param if present
     sse_url = f"{public_url}/sse"
     if token:
@@ -132,7 +147,10 @@ def print_mcp_configs(public_url: str, token: Optional[str]):
 
 
 def start_tunnel_background(
-    port: int, token: Optional[str] = None, timeout: float = 15.0
+    port: int,
+    token: Optional[str] = None,
+    timeout: float = 15.0,
+    host: str = "127.0.0.1",
 ) -> str:
     global _tunnel_process
 
@@ -145,7 +163,8 @@ def start_tunnel_background(
             "cloudflared executable not found and could not be downloaded"
         )
 
-    cmd = [cf_path, "tunnel", "--url", f"http://127.0.0.1:{port}"]
+    target_host = "127.0.0.1" if host == "0.0.0.0" else host
+    cmd = [cf_path, "tunnel", "--url", f"http://{target_host}:{port}"]
     print(f"Starting cloudflared tunnel command: {' '.join(cmd)}")
 
     _tunnel_process = subprocess.Popen(
@@ -220,7 +239,7 @@ def start_tunnel_background(
         stop_tunnel()
         raise RuntimeError("Timeout waiting for Cloudflare tunnel URL")
 
-    print_mcp_configs(public_url, token)
+    print_mcp_configs(public_url, token, host=host)
 
     return public_url
 

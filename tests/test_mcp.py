@@ -417,15 +417,18 @@ def test_start_sse_server_with_tunnel():
 
     cfg = Config(tunnel=True, port=8888, token="test_token_tunnel")
 
-    with patch("uvicorn.run") as mock_uvicorn_run, \
-         patch("gangway.core.tunnel.start_tunnel_background") as mock_start_tunnel:
-        
+    with (
+        patch("uvicorn.run") as mock_uvicorn_run,
+        patch("gangway.core.tunnel.start_tunnel_background") as mock_start_tunnel,
+    ):
         mcp_server.start_sse_server(cfg)
-        
+
         # Verify uvicorn.run was called
-        mock_uvicorn_run.assert_called_once_with(mcp_server.app, host=cfg.host, port=cfg.port)
+        mock_uvicorn_run.assert_called_once_with(
+            mcp_server.app, host=cfg.host, port=cfg.port
+        )
         # Verify start_tunnel_background was called
-        mock_start_tunnel.assert_called_once_with(cfg.port, cfg.token)
+        mock_start_tunnel.assert_called_once_with(cfg.port, cfg.token, host=cfg.host)
 
 
 def test_start_sse_server_without_tunnel():
@@ -434,12 +437,15 @@ def test_start_sse_server_without_tunnel():
 
     cfg = Config(tunnel=False, port=8888, token="test_token_no_tunnel")
 
-    with patch("uvicorn.run") as mock_uvicorn_run, \
-         patch("gangway.core.tunnel.start_tunnel_background") as mock_start_tunnel:
-        
+    with (
+        patch("uvicorn.run") as mock_uvicorn_run,
+        patch("gangway.core.tunnel.start_tunnel_background") as mock_start_tunnel,
+    ):
         mcp_server.start_sse_server(cfg)
-        
+
         # Verify uvicorn.run was called
-        mock_uvicorn_run.assert_called_once_with(mcp_server.app, host=cfg.host, port=cfg.port)
+        mock_uvicorn_run.assert_called_once_with(
+            mcp_server.app, host=cfg.host, port=cfg.port
+        )
         # Verify start_tunnel_background was NOT called
         mock_start_tunnel.assert_not_called()
