@@ -231,8 +231,8 @@ async def handle_call_tool(name: str, arguments: dict):
         elif name == "preview_file":
             raw_path = arguments["path"]
             resolved = state_manager.resolve_path(raw_path)
-            head = arguments.get("head", 80)
-            tail = arguments.get("tail", 40)
+            head = int(arguments.get("head")) if arguments.get("head") is not None else 80
+            tail = int(arguments.get("tail")) if arguments.get("tail") is not None else 40
             res = files_core.preview_file(
                 resolved, config.allowed_root, head=head, tail=tail
             )
@@ -251,8 +251,8 @@ async def handle_call_tool(name: str, arguments: dict):
         elif name == "upload_chunk":
             raw_path = arguments["file_path"]
             resolved = state_manager.resolve_path(raw_path)
-            chunk_idx = arguments["chunk_index"]
-            total_chunks = arguments["total_chunks"]
+            chunk_idx = int(arguments["chunk_index"])
+            total_chunks = int(arguments["total_chunks"])
             data_b64 = arguments["data_b64"]
             res = files_core.upload_chunk(
                 resolved, chunk_idx, total_chunks, data_b64, config.allowed_root
@@ -264,7 +264,7 @@ async def handle_call_tool(name: str, arguments: dict):
         elif name == "assemble_upload":
             raw_path = arguments["file_path"]
             resolved = state_manager.resolve_path(raw_path)
-            total_chunks = arguments["total_chunks"]
+            total_chunks = int(arguments["total_chunks"])
             res = files_core.assemble_upload(
                 resolved, total_chunks, config.allowed_root
             )
@@ -275,8 +275,8 @@ async def handle_call_tool(name: str, arguments: dict):
         elif name == "download_chunk":
             raw_path = arguments["file_path"]
             resolved = state_manager.resolve_path(raw_path)
-            chunk_idx = arguments["chunk_index"]
-            chunk_size = arguments.get("chunk_size", 65536)
+            chunk_idx = int(arguments["chunk_index"])
+            chunk_size = int(arguments.get("chunk_size")) if arguments.get("chunk_size") is not None else 65536
             res = files_core.download_chunk(
                 resolved, chunk_idx, chunk_size, config.allowed_root
             )
@@ -329,7 +329,7 @@ async def handle_call_tool(name: str, arguments: dict):
 
         elif name == "start_background_job":
             cmd = arguments["cmd"]
-            raw_cwd = arguments.get("cwd", state_manager.get_cwd())
+            raw_cwd = arguments.get("cwd") or state_manager.get_cwd()
             resolved_cwd = state_manager.resolve_path(raw_cwd)
             job_id = job_manager.start_job(cmd, resolved_cwd)
             return types.CallToolResult(
@@ -355,8 +355,8 @@ async def handle_call_tool(name: str, arguments: dict):
 
         elif name == "read_job_logs":
             job_id = arguments["job_id"]
-            head = arguments.get("head", 100)
-            tail = arguments.get("tail", 100)
+            head = int(arguments.get("head")) if arguments.get("head") is not None else 100
+            tail = int(arguments.get("tail")) if arguments.get("tail") is not None else 100
             logs = job_manager.read_job_logs(job_id, head=head, tail=tail)
             return types.CallToolResult(
                 content=[types.TextContent(type="text", text=logs)]
@@ -397,7 +397,7 @@ def verify_token(request: Request):
     if not config or not config.token:
         return
     token = request.headers.get("Authorization")
-    if token and token.startswith("Bearer "):
+    if token and token.lower().startswith("bearer "):
         token = token[7:]
     else:
         token = request.query_params.get("token")

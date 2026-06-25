@@ -285,3 +285,80 @@ def test_mcp_full_client_integration():
 
         anyio.run(run)
 
+
+def test_mcp_bearer_auth_case_insensitive():
+    from starlette.requests import Request
+    cfg = Config(token="secret_key")
+    mcp_server.config = cfg
+
+    # Test lowercase bearer
+    async def run_bearer():
+        sent_messages = []
+        async def mock_send(message: dict):
+            sent_messages.append(message)
+
+        disconnect_event = anyio.Event()
+        async def mock_receive():
+            await disconnect_event.wait()
+            return {"type": "http.disconnect"}
+
+        sse_scope = {
+            "type": "http",
+            "method": "GET",
+            "headers": [
+                (b"authorization", b"bearer secret_key"),
+                (b"host", b"localhost")
+            ],
+            "query_string": b"",
+            "path": "/sse",
+            "root_path": "",
+        }
+        sse_request = Request(sse_scope, receive=mock_receive, send=mock_send)
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(mcp_server.handle_sse, sse_request)
+            await anyio.sleep(0.1)
+            assert any(msg.get("type") == "http.response.start" and msg.get("status") == 200 for msg in sent_messages)
+            tg.cancel_scope.cancel()
+
+    anyio.run(run_bearer)
+
+
+def test_mcp_argument_casting():
+    import base64
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_resolved = str(Path(tmpdir).resolve())
+        cfg = Config(token="secret_key", allowed_root=tmpdir_resolved)
+        mcp_server.config = cfg
+        mcp_server.state_manager = StateManager(allowed_root=tmpdir_resolved)
+        mcp_server.job_manager = mcp_server.JobManager(allowed_root=tmpdir_resolved)
+
+        # Create dummy file for preview_file
+        with open(os.path.join(tmpdir_resolved, "test_cast.txt"), "w") as f:
+            f.write("line1\nline2\nline3")
+
+        async def run_casting():
+            # preview_file with head/tail as stringy numeric values
+            res = await mcp_server.handle_call_tool(
+                "preview_file",
+                {"path": "test_cast.txt", "head": "2", "tail": "1"}
+            )
+            assert not res.isError
+            assert "line1" in res.content[0].text
+            assert "line3" in res.content[0].text
+
+            # download_chunk with chunk_index and chunk_size as strings
+            with open(os.path.join(tmpdir_resolved, "chunk_test.bin"), "wb") as f:
+                f.write(b"hello world")
+
+            res_dl = await mcp_server.handle_call_tool(
+                "download_chunk",
+                {"file_path": "chunk_test.bin", "chunk_index": "0", "chunk_size": "5"}
+            )
+            assert not res_dl.isError
+            data = json.loads(res_dl.content[0].text)
+            assert base64.b64decode(data["data_b64"]) == b"hello"
+
+        anyio.run(run_casting)
+
+
