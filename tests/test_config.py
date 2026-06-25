@@ -68,9 +68,9 @@ def test_load_config_toml():
 
 
 def test_load_config_missing_file():
-    # Should not crash if the config file does not exist, and should use defaults
-    cfg = load_config(config_file="non_existent_file.json")
-    assert cfg.port == 8000
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        load_config(config_file="non_existent_file.json")
 
 
 def test_load_config_allowed_root_resolution():

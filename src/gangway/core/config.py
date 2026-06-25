@@ -41,7 +41,9 @@ def load_config(
         cfg.host = env_host
 
     # 3. Apply Config File (supports JSON/TOML)
-    if config_file and os.path.exists(config_file):
+    if config_file:
+        if not os.path.exists(config_file):
+            raise FileNotFoundError(f"Config file not found: {config_file}")
         data = {}
         if config_file.endswith(".json"):
             with open(config_file, "r") as f:
