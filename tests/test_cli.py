@@ -57,3 +57,19 @@ def test_cli_config_error():
             with pytest.raises(SystemExit) as excinfo:
                 main()
             assert excinfo.value.code == 1
+
+
+def test_cli_parsing_sse_tunnel():
+    test_args = [
+        "cli.py",
+        "--transport",
+        "sse",
+        "--tunnel",
+    ]
+    with patch.object(sys, "argv", test_args):
+        with patch("gangway.cli.start_sse_server") as mock_sse:
+            main()
+            mock_sse.assert_called_once()
+            cfg = mock_sse.call_args[0][0]
+            assert cfg.tunnel is True
+

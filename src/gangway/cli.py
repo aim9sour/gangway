@@ -21,6 +21,11 @@ def main():
         default="stdio",
         help="Transport mechanism",
     )
+    parser.add_argument(
+        "--tunnel",
+        action="store_true",
+        help="Enable Zero-Config Cloudflare Tunnel for SSE transport",
+    )
 
     args = parser.parse_args()
 
@@ -31,6 +36,7 @@ def main():
             allowed_root=args.allowed_root,
             port=args.port,
             host=args.host,
+            tunnel=args.tunnel,
         )
     except Exception as e:
         print(f"Error loading configuration: {e}", file=sys.stderr)

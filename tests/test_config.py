@@ -111,3 +111,65 @@ def test_load_config_invalid_ports():
     with pytest.raises(ValueError) as excinfo:
         load_config(port="invalid_port")
     assert "Invalid port" in str(excinfo.value)
+
+
+def test_load_config_tunnel():
+    import os
+    import tempfile
+    import json
+
+    # 1. Default should be False
+    os.environ.pop("GANGWAY_TUNNEL", None)
+    cfg = load_config()
+    assert cfg.tunnel is False
+
+    # 2. Env var GANGWAY_TUNNEL=true should set it to True
+    os.environ["GANGWAY_TUNNEL"] = "true"
+    try:
+        cfg = load_config()
+        assert cfg.tunnel is True
+    finally:
+        os.environ.pop("GANGWAY_TUNNEL", None)
+
+    # Env var GANGWAY_TUNNEL=TRUE should set it to True (case insensitivity)
+    os.environ["GANGWAY_TUNNEL"] = "TRUE"
+    try:
+        cfg = load_config()
+        assert cfg.tunnel is True
+    finally:
+        os.environ.pop("GANGWAY_TUNNEL", None)
+
+    # Env var GANGWAY_TUNNEL=false should set it to False
+    os.environ["GANGWAY_TUNNEL"] = "false"
+    try:
+        cfg = load_config()
+        assert cfg.tunnel is False
+    finally:
+        os.environ.pop("GANGWAY_TUNNEL", None)
+
+    # 3. Config file with {"tunnel": true} should set it to True
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump({"tunnel": True}, f)
+        config_path = f.name
+    try:
+        cfg = load_config(config_file=config_path)
+        assert cfg.tunnel is True
+    finally:
+        os.unlink(config_path)
+
+    # 4. CLI parameter tunnel=True should set it to True
+    cfg = load_config(tunnel=True)
+    assert cfg.tunnel is True
+
+    # 5. CLI overrides file and env
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump({"tunnel": False}, f)
+        config_path = f.name
+    os.environ["GANGWAY_TUNNEL"] = "false"
+    try:
+        cfg = load_config(config_file=config_path, tunnel=True)
+        assert cfg.tunnel is True
+    finally:
+        os.unlink(config_path)
+        os.environ.pop("GANGWAY_TUNNEL", None)
+

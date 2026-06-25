@@ -10,6 +10,7 @@ class Config:
     allowed_root: Optional[str] = None
     port: int = 8000
     host: str = "127.0.0.1"
+    tunnel: bool = False
 
 
 def load_config(
@@ -18,6 +19,7 @@ def load_config(
     allowed_root: Optional[str] = None,
     port: Optional[int] = None,
     host: Optional[str] = None,
+    tunnel: Optional[bool] = None,
 ) -> Config:
     # 1. Start with defaults
     cfg = Config()
@@ -27,6 +29,7 @@ def load_config(
     env_root = os.getenv("GANGWAY_ALLOWED_ROOT")
     env_port = os.getenv("GANGWAY_PORT")
     env_host = os.getenv("GANGWAY_HOST")
+    env_tunnel = os.getenv("GANGWAY_TUNNEL")
 
     if env_token:
         cfg.token = env_token
@@ -41,6 +44,8 @@ def load_config(
             ) from e
     if env_host:
         cfg.host = env_host
+    if env_tunnel:
+        cfg.tunnel = env_tunnel.lower() == "true"
 
     # 3. Apply Config File (supports JSON/TOML)
     if config_file:
@@ -81,6 +86,8 @@ def load_config(
                 ) from e
         if "host" in data:
             cfg.host = data["host"]
+        if "tunnel" in data:
+            cfg.tunnel = bool(data["tunnel"])
 
     # 4. Apply CLI values
     if token is not None:
@@ -94,6 +101,8 @@ def load_config(
             raise ValueError(f"Invalid port: {port}") from e
     if host is not None:
         cfg.host = host
+    if tunnel is not None:
+        cfg.tunnel = tunnel
 
     # 5. Resolve allowed_root if specified
     if cfg.allowed_root is not None:
