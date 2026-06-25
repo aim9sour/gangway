@@ -12,7 +12,7 @@ from starlette.responses import Response
 from starlette.exceptions import HTTPException
 from starlette.routing import Route
 
-from gangway.core.config import Config
+from gangway.core.config import Config, load_config
 from gangway.core.state import StateManager
 from gangway.core.jobs import JobManager
 import gangway.core.files as files_core
@@ -27,8 +27,19 @@ job_manager: Optional[JobManager] = None
 config: Optional[Config] = None
 
 
+def ensure_globals():
+    global config, state_manager, job_manager
+    if config is None:
+        config = load_config()
+    if state_manager is None:
+        state_manager = StateManager(allowed_root=config.allowed_root)
+    if job_manager is None:
+        job_manager = JobManager(allowed_root=config.allowed_root)
+
+
 @server.list_tools()
 async def handle_list_tools():
+    ensure_globals()
     return [
         types.Tool(
             name="list_directory",
@@ -200,6 +211,7 @@ async def handle_list_tools():
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict):
+    ensure_globals()
     try:
         if name == "list_directory":
             raw_path = arguments.get("path", ".")
@@ -381,6 +393,7 @@ sse = SseServerTransport("/messages/")
 
 
 def verify_token(request: Request):
+    ensure_globals()
     if not config or not config.token:
         return
     token = request.headers.get("Authorization")
@@ -393,26 +406,24 @@ def verify_token(request: Request):
 
 
 async def handle_sse(request: Request):
+    ensure_globals()
     verify_token(request)
-
-    async def run_mcp_session():
-        async with sse.connect_sse(request.scope, request.receive, request._send) as (
-            read_stream,
-            write_stream,
-        ):
-            await server.run(
-                read_stream, write_stream, server.create_initialization_options()
-            )
-
-    import asyncio
-
-    asyncio.create_task(run_mcp_session())
-    return Response(media_type="text/event-stream")
+    async with sse.connect_sse(request.scope, request.receive, request._send) as (
+        read_stream,
+        write_stream,
+    ):
+        await server.run(
+            read_stream, write_stream, server.create_initialization_options()
+        )
+    return Response()
 
 
 async def handle_messages_post(request: Request):
+    ensure_globals()
     verify_token(request)
-    return await sse.handle_post_message(request)
+    return await sse.handle_post_message(
+        request.scope, request.receive, request._send
+    )
 
 
 app = Starlette(
