@@ -42,17 +42,29 @@ Gangway can be configured via Environment Variables, JSON/TOML configuration fil
 
 To run the server using `stdio` transport:
 ```bash
+# If installed globally:
 gangway --transport stdio --token secret-token --allowed-root /path/to/sandbox
+
+# Or run instantly with uvx:
+uvx gangway --transport stdio --token secret-token --allowed-root /path/to/sandbox
 ```
 
 To run the server using `sse` transport:
 ```bash
+# If installed globally:
 gangway --transport sse --host 127.0.0.1 --port 8000 --token secret-token --allowed-root /path/to/sandbox
+
+# Or run instantly with uvx:
+uvx gangway --transport sse --host 127.0.0.1 --port 8000 --token secret-token --allowed-root /path/to/sandbox
 ```
 
 Using a configuration file:
 ```bash
+# If installed globally:
 gangway --config /path/to/config.toml --transport sse
+
+# Or run instantly with uvx:
+uvx gangway --config /path/to/config.toml --transport sse
 ```
 
 ## Register in AI Clients (Claude Desktop / Cursor)

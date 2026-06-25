@@ -178,7 +178,7 @@ class JobManager:
                 jobs.append(status)
             except Exception:
                 pass
-        jobs.sort(key=lambda x: x["start_time"])
+        jobs.sort(key=lambda x: (x["start_time"], x["job_id"]))
         return jobs
 
     def kill_job(self, job_id: str) -> bool:
