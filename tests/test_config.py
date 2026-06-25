@@ -1,6 +1,7 @@
 import os
 import tempfile
 import json
+from pathlib import Path
 from gangway.core.config import load_config
 
 
@@ -20,13 +21,13 @@ def test_load_config_precedence():
         cfg1 = load_config()
         assert cfg1.token == "env_token"
         assert cfg1.port == 8000
-        assert cfg1.allowed_root == "/env/root"
+        assert cfg1.allowed_root == str(Path("/env/root").resolve())
 
         # Scenario 2: File overrides env
         cfg2 = load_config(config_file=config_path)
         assert cfg2.token == "file_token"
         assert cfg2.port == 9000
-        assert cfg2.allowed_root == "/env/root"
+        assert cfg2.allowed_root == str(Path("/env/root").resolve())
 
         # Scenario 3: CLI overrides file
         cfg3 = load_config(config_file=config_path, token="cli_token", port=9500)
@@ -70,3 +71,13 @@ def test_load_config_missing_file():
     # Should not crash if the config file does not exist, and should use defaults
     cfg = load_config(config_file="non_existent_file.json")
     assert cfg.port == 8000
+
+
+def test_load_config_allowed_root_resolution():
+    # Test relative path resolution
+    relative_path = "./some_rel_path"
+    cfg = load_config(allowed_root=relative_path)
+    from pathlib import Path
+    expected = str(Path(relative_path).resolve())
+    assert cfg.allowed_root == expected
+

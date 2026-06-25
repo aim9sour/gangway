@@ -80,4 +80,10 @@ def load_config(
     if host is not None:
         cfg.host = host
 
+    # 5. Resolve allowed_root if specified
+    if cfg.allowed_root is not None:
+        from pathlib import Path
+        cfg.allowed_root = str(Path(cfg.allowed_root).resolve())
+
     return cfg
+
