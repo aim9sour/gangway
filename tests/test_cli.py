@@ -72,4 +72,3 @@ def test_cli_parsing_sse_tunnel():
             mock_sse.assert_called_once()
             cfg = mock_sse.call_args[0][0]
             assert cfg.tunnel is True
-

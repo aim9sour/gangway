@@ -172,4 +172,3 @@ def test_load_config_tunnel():
     finally:
         os.unlink(config_path)
         os.environ.pop("GANGWAY_TUNNEL", None)
-
