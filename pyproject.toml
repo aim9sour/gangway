@@ -30,6 +30,10 @@ dependencies = [
     "uvicorn>=0.22.0",
 ]
 
+[project.scripts]
+gangway = "gangway.cli:main"
+
+
 [project.urls]
 Homepage = "https://github.com/aim9sour/gangway"
 
