@@ -15,3 +15,6 @@ ENV/
 
 # Python version file
 .python-version
+
+# Temporary superpowers / SDD files
+.superpowers/

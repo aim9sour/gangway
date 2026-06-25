@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This project is managed using `uv`.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/abdullahmansour/gangway.git
+   git clone https://github.com/aim9sour/gangway.git
    cd gangway
    ```
 2. Setup the development environment and virtual environment:

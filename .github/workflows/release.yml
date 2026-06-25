@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write  # Mandatory for Trusted Publishing OIDC
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
