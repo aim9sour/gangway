@@ -39,36 +39,36 @@ def load_config(
 
     # 3. Apply Config File (supports JSON/TOML)
     if config_file and os.path.exists(config_file):
-        with open(config_file, "r") as f:
-            data = {}
-            if config_file.endswith(".json"):
+        data = {}
+        if config_file.endswith(".json"):
+            with open(config_file, "r") as f:
                 data = json.load(f)
-            elif config_file.endswith(".toml"):
-                # fallback minimal parser
-                import sys
+        elif config_file.endswith(".toml"):
+            # fallback minimal parser
+            import sys
 
-                if sys.version_info >= (3, 11):
-                    import tomllib
+            if sys.version_info >= (3, 11):
+                import tomllib
+
+                with open(config_file, "rb") as bf:
+                    data = tomllib.load(bf)
+            else:
+                try:
+                    import tomli as toml
 
                     with open(config_file, "rb") as bf:
-                        data = tomllib.load(bf)
-                else:
-                    try:
-                        import tomli as toml
+                        data = toml.load(bf)
+                except ImportError:
+                    pass
 
-                        with open(config_file, "rb") as bf:
-                            data = toml.load(bf)
-                    except ImportError:
-                        pass
-
-            if "token" in data:
-                cfg.token = data["token"]
-            if "allowed_root" in data:
-                cfg.allowed_root = data["allowed_root"]
-            if "port" in data:
-                cfg.port = int(data["port"])
-            if "host" in data:
-                cfg.host = data["host"]
+        if "token" in data:
+            cfg.token = data["token"]
+        if "allowed_root" in data:
+            cfg.allowed_root = data["allowed_root"]
+        if "port" in data:
+            cfg.port = int(data["port"])
+        if "host" in data:
+            cfg.host = data["host"]
 
     # 4. Apply CLI values
     if token is not None:
