@@ -20,7 +20,7 @@ import gangway.core.files as files_core
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("gangway.mcp")
 
-server = Server("gangway", "0.1.0")
+server = Server("gangway", "0.1.3")
 
 state_manager: Optional[StateManager] = None
 job_manager: Optional[JobManager] = None
