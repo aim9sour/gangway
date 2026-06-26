@@ -449,3 +449,54 @@ def test_start_sse_server_without_tunnel():
         )
         # Verify start_tunnel_background was NOT called
         mock_start_tunnel.assert_not_called()
+
+
+def test_mcp_all_exposed_tools_robustness():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_resolved = str(Path(tmpdir).resolve())
+        cfg = Config(token="secret_key", allowed_root=tmpdir_resolved)
+        mcp_server.config = cfg
+        mcp_server.state_manager = StateManager(allowed_root=tmpdir_resolved)
+        mcp_server.job_manager = mcp_server.JobManager(allowed_root=tmpdir_resolved)
+
+        async def run_robustness():
+            # Handle list tools to get all exposed tools
+            tools = await mcp_server.handle_list_tools()
+            assert len(tools) == 16  # Exposes exactly 16 tools
+
+            for tool in tools:
+                # 1. Validate tool schema structure (must be readable by standard MCP clients)
+                assert tool.name, "Tool is missing a name"
+                assert tool.description, f"Tool {tool.name} is missing a description"
+                assert isinstance(tool.inputSchema, dict), (
+                    f"Tool {tool.name} has invalid inputSchema type"
+                )
+                assert tool.inputSchema.get("type") == "object", (
+                    f"Tool {tool.name} schema type is not object"
+                )
+
+                # 2. Call tool with empty arguments, verify it returns CallToolResult gracefully
+                result = await mcp_server.handle_call_tool(tool.name, {})
+                assert isinstance(result, mcp_server.types.CallToolResult), (
+                    f"Tool {tool.name} call did not return CallToolResult"
+                )
+
+                # Verify that if it is an error, it is marked as isError=True, and contains a text message
+                if result.isError:
+                    assert len(result.content) > 0, (
+                        f"Error response for {tool.name} is empty"
+                    )
+                    assert result.content[0].type == "text", (
+                        "Error response content type is not text"
+                    )
+                    assert (
+                        "Error executing" in result.content[0].text
+                        or "missing" in result.content[0].text
+                        or "required" in result.content[0].text
+                        or "KeyError" in result.content[0].text
+                        or "ValueError" in result.content[0].text
+                    ), (
+                        f"Unexpected error format for {tool.name}: {result.content[0].text}"
+                    )
+
+        anyio.run(run_robustness)
