@@ -538,3 +538,50 @@ def test_mcp_stdio_client_handshake():
             tg.cancel_scope.cancel()
 
     anyio.run(run)
+
+
+def test_mcp_sse_cors_preflight():
+    cfg = Config(token="secret_key")
+    mcp_server.config = cfg
+    client = TestClient(mcp_server.app)
+
+    headers = {
+        "Origin": "http://localhost:3000",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "Content-Type",
+    }
+    response = client.options("/messages/", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "*"
+    assert "POST" in response.headers.get("access-control-allow-methods", "")
+
+    response2 = client.options("/messages", headers=headers)
+    assert response2.status_code == 200
+    assert response2.headers.get("access-control-allow-origin") == "*"
+
+
+def test_mcp_sse_no_slash_post_unauthorized():
+    cfg = Config(token="secret_key")
+    mcp_server.config = cfg
+    client = TestClient(mcp_server.app)
+
+    response = client.post("/messages")
+    assert response.status_code == 401
+
+
+def test_mcp_sse_no_slash_post_authorized_empty():
+    cfg = Config(token="secret_key")
+    mcp_server.config = cfg
+    client = TestClient(mcp_server.app)
+
+    response = client.post("/messages?token=secret_key")
+    assert response.status_code in (400, 404)
+
+
+def test_mcp_sse_get_messages_method_not_allowed():
+    cfg = Config(token="secret_key")
+    mcp_server.config = cfg
+    client = TestClient(mcp_server.app)
+
+    response = client.get("/messages?token=secret_key")
+    assert response.status_code == 405

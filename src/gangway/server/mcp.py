@@ -10,7 +10,9 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.exceptions import HTTPException
-from starlette.routing import Route
+from starlette.routing import Mount, Route
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 
 from gangway.core.config import Config, load_config
 from gangway.core.state import StateManager
@@ -20,7 +22,7 @@ import gangway.core.files as files_core
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("gangway.mcp")
 
-server = Server("gangway", "0.1.5")
+server = Server("gangway", "0.1.6")
 
 state_manager: Optional[StateManager] = None
 job_manager: Optional[JobManager] = None
@@ -453,11 +455,31 @@ async def handle_messages_post(request: Request):
     return await sse.handle_post_message(request.scope, request.receive, request._send)
 
 
+async def handle_messages_post_asgi(scope, receive, send):
+    if scope.get("method") != "POST":
+        response = Response("Method Not Allowed", status_code=405)
+        await response(scope, receive, send)
+        return
+    request = Request(scope, receive)
+    ensure_globals()
+    verify_token(request)
+    await sse.handle_post_message(scope, receive, send)
+
+
 app = Starlette(
     routes=[
         Route("/sse", endpoint=handle_sse, methods=["GET"]),
-        Route("/messages/", endpoint=handle_messages_post, methods=["POST"]),
-    ]
+        Mount("/messages", app=handle_messages_post_asgi),
+    ],
+    middleware=[
+        Middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["*"],
+        )
+    ],
 )
 
 
