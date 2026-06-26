@@ -129,18 +129,7 @@ def print_mcp_configs(public_url: str, token: Optional[str], host: str = "127.0.
 
     print(f"\n--- Claude Desktop Config ({config_path}) ---")
 
-    claude_config = {
-        "mcpServers": {
-            "gangway": {
-                "command": "npx",
-                "args": [
-                    "-y",
-                    "@modelcontextprotocol/inspector",
-                    sse_url,
-                ],
-            }
-        }
-    }
+    claude_config = {"mcpServers": {"gangway": {"url": sse_url}}}
 
     print(json.dumps(claude_config, indent=2))
     print("=" * 80 + "\n")

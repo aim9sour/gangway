@@ -351,7 +351,10 @@ def test_print_mcp_configs(capsys):
     assert "https://example.trycloudflare.com/sse?token=my_secret_token" in captured.out
     assert "mcpServers" in captured.out
     assert "gangway" in captured.out
-    assert "@modelcontextprotocol/inspector" in captured.out
+    assert (
+        '"url": "https://example.trycloudflare.com/sse?token=my_secret_token"'
+        in captured.out
+    )
 
     # 2. Test printing without token
     print_mcp_configs("https://example.trycloudflare.com", None, "127.0.0.1")
