@@ -408,6 +408,23 @@ def verify_token(request: Request):
     ensure_globals()
     if not config or not config.token:
         return
+
+    # If this is a POST request to /messages/ and has a valid, active session_id,
+    # it means the session was already authenticated on /sse connection.
+    # Since clients resolve /messages/ relative to base SSE URL, query params (like token) are dropped.
+    # We bypass token verification for registered sessions to allow client initialization.
+    if request.method == "POST" and request.url.path.rstrip("/").endswith("/messages"):
+        session_id_param = request.query_params.get("session_id")
+        if session_id_param:
+            try:
+                from uuid import UUID
+
+                sid = UUID(hex=session_id_param)
+                if sid in sse._read_stream_writers:
+                    return
+            except Exception:
+                pass
+
     token = request.headers.get("Authorization")
     if token and token.lower().startswith("bearer "):
         token = token[7:]

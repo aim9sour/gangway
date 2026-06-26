@@ -232,7 +232,8 @@ def test_mcp_full_client_integration():
                         "type": "http",
                         "method": "POST",
                         "headers": [
-                            (b"authorization", b"Bearer secret_key"),
+                            # Note: Real clients do not send authorization headers for POST messages,
+                            # they rely on session_id validation.
                             (b"content-type", b"application/json"),
                             (b"host", b"localhost"),
                         ],
