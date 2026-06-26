@@ -337,3 +337,25 @@ def test_get_cloudflared_path_download_darwin_tgz():
         mock_chmod.assert_called_once_with(
             Path("/home/user/.gangway/bin/cloudflared"), 0o755
         )
+
+
+def test_print_mcp_configs(capsys):
+    from gangway.core.tunnel import print_mcp_configs
+
+    # 1. Test printing with token
+    print_mcp_configs(
+        "https://example.trycloudflare.com", "my_secret_token", "127.0.0.1"
+    )
+    captured = capsys.readouterr()
+
+    assert "https://example.trycloudflare.com/sse?token=my_secret_token" in captured.out
+    assert "mcpServers" in captured.out
+    assert "gangway" in captured.out
+    assert "@modelcontextprotocol/inspector" in captured.out
+
+    # 2. Test printing without token
+    print_mcp_configs("https://example.trycloudflare.com", None, "127.0.0.1")
+    captured2 = capsys.readouterr()
+
+    assert "https://example.trycloudflare.com/sse" in captured2.out
+    assert "token=" not in captured2.out
