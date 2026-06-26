@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gangway"
-version = "0.1.4"
+version = "0.1.5"
 description = "A smart Agent-to-Server Bridge connecting AI agents to remote environments as an MCP server and REST API."
 readme = "README.md"
 requires-python = ">=3.10"
