@@ -500,3 +500,40 @@ def test_mcp_all_exposed_tools_robustness():
                     )
 
         anyio.run(run_robustness)
+
+
+def test_mcp_stdio_client_handshake():
+    from mcp import ClientSession
+
+    async def run():
+        # Create memory streams for bidirectional communication
+        # client_write -> server_read
+        client_write, server_read = anyio.create_memory_object_stream(10)
+        # server_write -> client_read
+        server_write, client_read = anyio.create_memory_object_stream(10)
+
+        # Run client session and server in parallel
+        async with anyio.create_task_group() as tg:
+            # Start server
+            tg.start_soon(
+                mcp_server.server.run,
+                server_read,
+                server_write,
+                mcp_server.server.create_initialization_options(),
+            )
+
+            # Start client session
+            async with ClientSession(client_read, client_write) as session:
+                # Run initialize handshake
+                init_result = await session.initialize()
+                assert init_result is not None
+                assert init_result.protocolVersion is not None
+
+                # Verify we can list tools via the actual client session
+                tools_result = await session.list_tools()
+                assert len(tools_result.tools) == 16
+                assert any(t.name == "list_directory" for t in tools_result.tools)
+
+            tg.cancel_scope.cancel()
+
+    anyio.run(run)
